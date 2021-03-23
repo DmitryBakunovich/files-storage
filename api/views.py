@@ -1,12 +1,18 @@
+import os
+from wsgiref.util import FileWrapper
+
 from django.db import IntegrityError
+from django.http import HttpResponse
 from rest_framework import status
+from rest_framework.decorators import parser_classes
 from rest_framework.generics import RetrieveUpdateAPIView
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_jwt.authentication import JSONWebTokenAuthentication
 
-from .models import Folder
+from .models import Folder, File
 from .serializers import LoginSerializer, UserSerializer, FolderSerializer, \
     FileSerializer
 
@@ -150,5 +156,73 @@ class FolderMoveView(APIView):
         return Response(
             {
                 'ok': folder.path,
+            }
+        )
+
+
+class FileView(APIView):
+    permission_classes = (IsAuthenticated,)
+    authentication_class = JSONWebTokenAuthentication
+
+    def head(self, request):
+        try:
+            file = File.objects.get(
+                pk=request.data.get('file')
+            )
+            response_header = {
+                'Size': os.stat(str(file.file)).st_size,
+                'Owner': file.owner,
+                'Folder': file.folder
+            }
+            return Response(
+                headers=response_header
+            )
+        except File.DoesNotExist:
+            return Response(
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    def get(self, request):
+        queryset = File.objects.get(
+            id=request.data.get('id')
+        )
+        file_handle = queryset.file
+        document = open(
+            str(file_handle),
+            'rb'
+        )
+        response = HttpResponse(
+            FileWrapper(document),
+            content_type='whatever'
+        )
+        response['Content-Disposition'] = f'attachment; ' \
+                                          f'filename="{queryset.name}"'
+        return response
+
+    @parser_classes([MultiPartParser])
+    def put(self, request):
+        file_serializer = FileSerializer(data=request.data)
+        if file_serializer.is_valid():
+            file_serializer.save()
+            return Response(
+                file_serializer.data,
+                status=status.HTTP_201_CREATED
+            )
+        return Response(
+            file_serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+class FileCopyView(APIView):
+
+    def post(self, request):
+        file = File.objects.get(
+            pk=request.data.get('file')
+        )
+        file.duplicate(request.data.get('to_folder'))
+        return Response(
+            {
+                'ok': 'qq',
             }
         )

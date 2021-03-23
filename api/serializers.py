@@ -110,6 +110,8 @@ class FileSerializer(serializers.ModelSerializer):
         fields = (
             'id',
             'name',
+            'created',
+            'owner'
         )
         read_only_fields = (
             'id',

@@ -3,6 +3,7 @@ from shutil import move, Error as MoveError
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
+from django.core.files import File as DjangoFile
 from django.db import models
 
 
@@ -78,11 +79,36 @@ class Folder(models.Model):
         return self.path
 
 
+def upload_folder_path(instance, filename):
+    return f'{instance.folder.path}/{filename}'
+
+
 class File(models.Model):
     name = models.CharField(max_length=40, null=False, default=None)
+    owner = models.ForeignKey(
+        'api.CustomUser',
+        null=False,
+        on_delete=models.CASCADE,
+        related_name='file_owner'
+    )
     folder = models.ForeignKey(
         'api.Folder',
         null=False,
         on_delete=models.CASCADE,
         related_name='files'
     )
+    file = models.FileField(
+        upload_to=upload_folder_path,
+        blank=False,
+        null=False
+    )
+    created = models.DateTimeField(auto_now_add=True)
+
+    def duplicate(self, folder_id):
+        new_file = File(
+            name=self.name,
+            owner=self.owner,
+            folder_id=folder_id,
+            file=DjangoFile(self.file, self.name)
+        )
+        new_file.save()
